@@ -88,6 +88,7 @@ frontend vip-qpid
 
 frontend vip-horizon
     bind ${PHD_VAR_network_internal}.211:80
+    mode http
     timeout client 180s
     cookie SERVERID insert indirect nocache
     default_backend horizon-vms
