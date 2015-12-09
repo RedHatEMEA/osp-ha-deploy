@@ -124,7 +124,7 @@ horizon:x:85:80:180s
 heat-cfn:212:91:8000
 heat-cloudw:212:91:8004
 heat-srv:212:91:8004
-ceilometer:x:97:8777
+ceilometer:x:97:8777:90s
 "
 
 for mapping in $mappings; do 
