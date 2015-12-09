@@ -119,7 +119,7 @@ nova-vnc-novncproxy:210:85:6080
 nova-vnc-xvpvncproxy:210:85:6081
 nova-metadata:210:85:8775
 nova-api:210:85:8774
-horizon:x:85:80:108s
+horizon:x:85:80:180s
 heat-cfn:212:91:8000
 heat-cloudw:212:91:8004
 heat-srv:212:91:8004
