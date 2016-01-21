@@ -231,13 +231,13 @@ of a proxy server:
 However the reasons vary and are discussed under each component's
 heading.
 
-We recommend HAProxy as the load balancer, however there are many
+The OSP-d deploys HAProxy as the load balancer, however there are many
 alternatives in the marketplace.
 
-We use a check interval of 1 second however the timeouts vary by service.
+We use a check interval of 2 seconds however the timeouts vary by service.
 
 Generally we use round-robin to distriute load amongst instances of
-active/active services, however Galera and Qpid use the `stick-table`
+active/active services, however Galera use the `stick-table`
 options to ensure that incoming connections to the virtual IP (VIP)
 should be directed to only one of the available backends.
 
@@ -245,13 +245,6 @@ In Galera's case, although it can run active/active, this helps avoid
 lock contention and prevent deadlocks.  It is used in combination with
 the `httpchk` option that ensures only nodes that are in sync with its
 peers are allowed to handle requests.
-
-Qpid however operates in a active/passive configuration, no built-in
-clustering, so in it's case the `stick-table` option ensures that all
-requests go to the active instance.
-
-If you are performing a segregated deployment, follow the [basic
-cluster setup](pcmk/basic-cluster.scenario) instructions.
 
 After verifying the (collapsed or newly created) cluster is
 functional, you can then deploy the [load balancer](pcmk/lb.scenario) to
