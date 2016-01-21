@@ -47,7 +47,7 @@ nodes: 1
 target=all
 ....
 yum install -y haproxy
-echo net.ipv4.ip_nonlocal_bind=1 >> /etc/sysctl.d/haproxy.conf
+echo net.ipv4.ip_nonlocal_bind=1 >> /etc/sysctl.d/99-sysctl.conf 
 echo 1 > /proc/sys/net/ipv4/ip_nonlocal_bind
 # the keepalive settings must be set in *ALL* hosts interacting with rabbitmq.
 cat >/etc/sysctl.d/tcp_keepalive.conf << EOF
@@ -64,13 +64,160 @@ sysctl net.ipv4.tcp_keepalive_time=5
 cat > /etc/haproxy/haproxy.cfg << EOF
 global
     daemon
+    group haproxy
+    log  /dev/log local0
+    maxconn  20480
+    pidfile  /var/run/haproxy.pid
+    user  haproxy
+
 defaults
+    log  global
+    maxconn  4096
     mode tcp
-    maxconn 10000
+    retries 3
+    timeout  http-request 10s
+    timeout  queue 1m
     timeout  connect 10s
     timeout  client 1m
     timeout  server 1m
     timeout  check 10s
+
+#XXX: Something is really fishy here...
+# What is the public and what is the private IP?
+#And why does _only_ redis listen to the .17
+#This section need to be re-visted with a multi-network configuration!
+#
+listen ceilometer
+  bind 192.0.2.16:8777 
+  server overcloud-controller-0 192.0.2.23:8777 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8777 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8777 check fall 5 inter 2000 rise 2
+
+listen cinder
+  bind 192.0.2.16:8776 
+  server overcloud-controller-0 192.0.2.23:8776 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8776 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8776 check fall 5 inter 2000 rise 2
+
+listen glance_api
+  bind 192.0.2.16:9292 
+  server overcloud-controller-0 192.0.2.23:9292 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:9292 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:9292 check fall 5 inter 2000 rise 2
+
+listen glance_registry
+  bind 192.0.2.16:9191 
+  server overcloud-controller-0 192.0.2.23:9191 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:9191 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:9191 check fall 5 inter 2000 rise 2
+
+listen haproxy.stats
+  bind 192.0.2.16:1993 
+  mode http
+  stats enable
+  stats uri /
+
+listen heat_api
+  bind 192.0.2.16:8004 
+  mode http
+  server overcloud-controller-0 192.0.2.23:8004 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8004 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8004 check fall 5 inter 2000 rise 2
+
+listen heat_cfn
+  bind 192.0.2.16:8000 
+  server overcloud-controller-0 192.0.2.23:8000 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8000 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8000 check fall 5 inter 2000 rise 2
+
+listen heat_cloudwatch
+  bind 192.0.2.16:8003 
+  server overcloud-controller-0 192.0.2.23:8003 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8003 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8003 check fall 5 inter 2000 rise 2
+
+listen horizon
+  bind 192.0.2.16:80 
+  mode http
+  cookie SERVERID insert indirect nocache
+  server overcloud-controller-0 192.0.2.23:80 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:80 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:80 check fall 5 inter 2000 rise 2
+
+listen keystone_admin
+  bind 192.0.2.16:35357 
+  server overcloud-controller-0 192.0.2.23:35357 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:35357 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:35357 check fall 5 inter 2000 rise 2
+
+listen keystone_public
+  bind 192.0.2.16:5000 
+  server overcloud-controller-0 192.0.2.23:5000 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:5000 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:5000 check fall 5 inter 2000 rise 2
+
+listen mysql
+  bind 192.0.2.16:3306 
+  option tcpka
+  option httpchk
+  stick on dst
+  stick-table type ip size 1000
+  timeout client 0
+  timeout server 0
+  server overcloud-controller-0 192.0.2.23:3306 backup check fall 5 inter 2000 on-marked-down shutdown-sessions port 9200 rise 2
+  server overcloud-controller-1 192.0.2.22:3306 backup check fall 5 inter 2000 on-marked-down shutdown-sessions port 9200 rise 2
+  server overcloud-controller-2 192.0.2.24:3306 backup check fall 5 inter 2000 on-marked-down shutdown-sessions port 9200 rise 2
+
+listen neutron
+  bind 192.0.2.16:9696 
+  server overcloud-controller-0 192.0.2.23:9696 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:9696 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:9696 check fall 5 inter 2000 rise 2
+
+listen nova_ec2
+  bind 192.0.2.16:8773 
+  server overcloud-controller-0 192.0.2.23:8773 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8773 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8773 check fall 5 inter 2000 rise 2
+
+listen nova_metadata
+  bind 192.0.2.16:8775 
+  server overcloud-controller-0 192.0.2.23:8775 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8775 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8775 check fall 5 inter 2000 rise 2
+
+listen nova_novncproxy
+  bind 192.0.2.16:6080 
+  balance source
+  server overcloud-controller-0 192.0.2.23:6080 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:6080 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:6080 check fall 5 inter 2000 rise 2
+
+listen nova_osapi
+  bind 192.0.2.16:8774 
+  server overcloud-controller-0 192.0.2.23:8774 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8774 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8774 check fall 5 inter 2000 rise 2
+
+listen redis
+  bind 192.0.2.17:6379 
+  balance first
+  option tcp-check
+  tcp-check send info\ replication\r\n
+  tcp-check expect string role:master
+  timeout client 0
+  timeout server 0
+  server overcloud-controller-0 192.0.2.23:6379 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:6379 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:6379 check fall 5 inter 2000 rise 2
+
+listen swift_proxy_server
+  bind 192.0.2.16:8080 
+  server overcloud-controller-0 192.0.2.23:8080 check fall 5 inter 2000 rise 2
+  server overcloud-controller-1 192.0.2.22:8080 check fall 5 inter 2000 rise 2
+  server overcloud-controller-2 192.0.2.24:8080 check fall 5 inter 2000 rise 2
+
+
 EOF
 
 # Special case front-ends
