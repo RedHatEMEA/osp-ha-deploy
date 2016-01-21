@@ -8,10 +8,7 @@ The current target for this document is pre-release RDO 7, based on
 the OpenStack Kilo release.
 
 ## Purpose of this Document
-
-This document aims at defining a high level architecture for a highly
-available RHEL OSP setup with the [Pacemaker](http://clusterlabs.org)
-cluster manager which provides:
+This documens aims at defining the high level architecture for the highly available RHEL OSP setup with the [Pacemaker](http://clusterlabs.org) cluster manager which is set up by OSP-d 7. This configuration provides:
 
 - detection and recovery of machine and application-level failures
 - startup/shutdown ordering between applications
@@ -35,10 +32,7 @@ describe the operational mode of services in a cluster:
   configuration typically requires the most extra hardware.
 
 In this document, all components are currently modelled as
-active/active with the exception of:
-
-- cinder-volume
-- qpid (optional)
+active/active with the exception of cinder-volume
 
 Implementation details are contained in scripts linked to from the main document.
 Read them carefully before considering to run them in your own environment. 
@@ -47,27 +41,16 @@ Read them carefully before considering to run them in your own environment.
 
 - The referenced scripts contain many comments and warnings - READ THEM CAREFULLY.
 - There are probably 2^8 other ways to deploy this same scenario. This is only one of them.
-- Due to limited number of available physical LAN connections in the test setup, the instance IP traffic overlaps with the internal/management network.
-- Distributed/Shared storage is provided via NFS from the commodity server due to lack of dedicated CEPH servers. Any other kind of storage supported by OpenStack would work just fine.
-- Bare metal could be used in place of any or all guests.
+- Distributed/Shared storage is provided via CEPH. Other kind of storage supported by OpenStack could also be supported.
 - Most of the scripts contain shell expansion to automatically fill in some values.  Use your common sense when parsing data. Example:
 
   `openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev vmnet0 scope global | grep inet | sed -e 's#.*inet ##g' -e    's#/.*##g')`
 
   means that we want the IP address from vmnet0 as vncserver_proxyclient_address.
 
-## Bugs
-
-- **python-tooz 0.13.2** or later is required (https://bugzilla.redhat.com/show_bug.cgi?id=1203706).
-- **python-websockify 0.6.0** or later is required (https://bugzilla.redhat.com/show_bug.cgi?id=1200701).
-
-These should be fixed by the Kilo GA date.
-
 ### TODO
 
 - Missing how-to move a service from cluster X to cluster Y
-- nova network HA
-- Compute nodes managed by pacemaker_remoted
 - Remove all artificial sleep and use pcs --wait once 7.1 is out of the door
 - Improve nova-compute test section with CLI commands
 - re-check keystone -> other services start order require-all=false option
@@ -77,10 +60,9 @@ These should be fixed by the Kilo GA date.
 
 ## Requirements
 
-A minimum of 5 machines are required to deploy this setup:
+A minimum of 4 machines are required to deploy this setup:
 
-- 1 commodity server (can be a VM) to deploy nfs-server, dhcp, dns
-- 1 bare metal node to be used a compute node
+- 1 node to be used a compute node.
 - 3 controller nodes
 
   The linked scripts assume the controller nodes are bare-metal and will create one or more VMs (dependng on the deployment type) to run on top of them.
@@ -88,48 +70,23 @@ A minimum of 5 machines are required to deploy this setup:
 
 ## Assumptions
 
-- To provide additional isolation, every component runs in its own virtual machine
 - All APIs are exposed only in the internal LAN
 - neutron-agents are directly connected to the external LAN
 - nova and horizon are exposed to the external LAN via an extra haproxy instance
 - Compute nodes have a management connection to the external LAN but it is not used by OpenStack and hence not reproduced in the diagram. This will be used when adding nova network setup.
 - Here is a [list of variables](pcmk/ha-collapsed.variables) used when executing the referenced scripts.  Modify them to your needs.
 
-In this document we describe two deployment extremes:
+In this document we describe the collapsed configuration. In this configuration, there is a single cluster of 3 or more
+ nodes on which every component is running.
+    
+This scenario has the advantage of requiring far fewer, if more
+powerful, machines.  Additionally, being part of a single cluster
+allows us to accurately model the ordering dependancies between
+components.
 
-1.  __Segregated__
-    
-    In this configuration, each service runs in a dedicated cluster of
-    3 or more nodes.
-    
-    The benefits to this approach are the physical isolation between
-    components and the ability to add capacity to specific components.
-
-    This scenario can be visualized as below, where each box below
-    represents a cluster of three or more guests. 
-    
-    ![Segregated deployment architecture](Cluster-deployment-segregated.png)
-
-1.  __Collapsed__ 
-    
-    In this configuration, there is a single cluster of 3 or more
-    nodes on which every component is running.
-    
-    This scenario has the advantage of requiring far fewer, if more
-    powerful, machines.  Additionally, being part of a single cluster
-    allows us to accurately model the ordering dependancies between
-    components.
-
-    This scenario can be visualized as below. 
+This scenario can be visualized as below. 
     
     ![Collapsed deployment architecture](Cluster-deployment-collapsed.png)
-
-1.  __Mixed__ (not documented) 
-
-    While not something we document here, it is certainly possible to
-    follow a segregated approach for one or more components that are
-    expected to be a bottleneck and use a collapsed apprach for the
-    remainder.
 
 
 Regardless of which scenario you choose, it is required that the
@@ -152,45 +109,6 @@ You can have up to 16 cluster members (this is currently limited by
 corosync's ability to scale higher).  In extreme cases, 32 and even up
 to 64 nodes could be possible however this is not well tested.
 
-In some environments, the available IP address range of the public LAN
-is limited. If this applies to you, you will need one additional node
-to set up as a [gateway](pcmk/gateway.scenario) that will provide DNS
-and DHCP for the guests containing the OpenStack services and expose
-the required nova and horizon APIs to the external network.
-
-## Implementation - Segregated
-
-Start by creating a minimal CentOS installation on at least three nodes.
-No OpenStack services or HA will be running here.
-
-For each service we create a virtual cluster, with one member running
-on each of the physical hosts.  Each virtual cluster must contain at
-members, one per physical host, for the reasons stated above.
-
-Once the machines have been installed, [prepare them](pcmk/baremetal.scenario) 
-for hosting OpenStack.
-
-Next we must [create the image](pcmk/virt-hosts.scenario) for the
-guests that will host the OpenStack services and clone it.  Once the
-image has been created, we can prepare the hosting nodes and
-[clone](pcmk/virt-hosts.scenario) it.
-
-## Implementation - Collapsed
-
-Start by creating a minimal CentOS installation on at least three nodes.
-No OpenStack services or HA will be running here.
-
-We create a single virtual cluster, with one member running on each of
-the physical hosts.  The virtual cluster must contain at least three
-members, one per physical host, for the reasons stated above.
-
-Once the machines have been installed, [prepare them](pcmk/baremetal.scenario) 
-for hosting OpenStack.
-
-Next we must [create the image](pcmk/virt-hosts.scenario) for the
-guests that will host the OpenStack services and clone it.  Once the
-image has been created, we can prepare the hosting nodes and
-[clone](pcmk/virt-hosts.scenario) it.
 
 # Deploy OpenStack HA controllers
 
